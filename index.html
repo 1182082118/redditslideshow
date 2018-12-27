@@ -76,14 +76,20 @@ document.body.style.margin = 0;
 // If the post does not yield a valid media, the Promise fails.
 var promiseExtractMediaURL = function(post) {
 	return new Promise(function(resolve, reject) {
+		var http2https = function(url) {
+			if (url.slice(0, 5) === "http:") {
+				return "https" + url.slice(4);
+			}
+			return url
+		};
 		if (/\.jpg$/.test(post.url) || /\.png$/.test(post.url) || /\.gif$/.test(post.url)) {
-			post.mediaURL = post.url;
+			post.mediaURL = http2https(post.url);
 			post.mediaType = "image";
 			resolve(post);
 		}
 		else if (/\.gifv$/.test(post.url)) {
 			// https://i.imgur.com/<id>.gifv -> https://i.imgur.com/<id>.gif
-			post.mediaURL = post.url;
+			post.mediaURL = http2https(post.url);
 			post.mediaType = "gifv";
 			resolve(post);
 		}
