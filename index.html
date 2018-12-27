@@ -2,52 +2,8 @@
 <html>
 <head>
 <title>Nice!</title>
-<style>
-:root {
-	--primary-major: #ff69b4;
-	--primary-minor: #ffddf4;  /* or ffb3de */
-	--secondary-major: #c0c0c0;
-	--secondary-minor: #dcdcdc;
-	--background-color: #ffffff;
-}
-body {
-	background-color: var(--background-color);
-	overflow: hidden;
-}
-#postInfoDisplayBlock {
-	z-index: 2;
-	position: absolute;
-	max-width: 75%;
-}
-#postInfoDisplayTitleP {
-	font-size: x-large;
-	margin-block-end: 0;
-	font-family: helvetica, sans-serif;
-}
-#postInfoDisplayTitleLink {
-	text-decoration: none;
-	color: var(--primary-major);
-}
-#postInfoDisplayTitleLink:hover {
-	color: var(--primary-minor);
-}
-#postInfoDisplaySubredditP {
-	font-size: medium;
-	margin-block-start: 0;
-	font-family: verdana, sans-serif;
-}
-#postInfoDisplaySubredditLink {
-	text-decoration: none;
-	color: var(--secondary-major);
-}
-#postInfoDisplaySubredditLink:hover {
-	color: var(--secondary-minor);
-}
-</style>
 <script>
 window.onload = function() {
-document.body.scroll = "no";
-document.body.style.margin = 0;
 
 /*
 Run a slideshow of pictures, gifs, webms from posts picked uniformly from a list of subreddits.
@@ -112,6 +68,10 @@ Sorting.prototype.getPeriod = function() {
 ////////////////////////////////////////////////////////////////////////////////
 var launchSlideshow = function(settings) {
 
+document.body.style.overflow = "hidden";
+document.body.scroll = "no";
+document.body.style.margin = 0;
+
 // Return a Promise that resolves when the media URL has been extracted from a given post's URL.
 // If the post does not yield a valid media, the Promise fails.
 var promiseExtractMediaURL = function(post) {
@@ -123,8 +83,8 @@ var promiseExtractMediaURL = function(post) {
 		}
 		else if (/\.gifv$/.test(post.url)) {
 			// https://i.imgur.com/<id>.gifv -> https://i.imgur.com/<id>.gif
-			post.mediaURL = post.url.slice(0, -1);
-			post.mediaType = "image";
+			post.mediaURL = post.url;
+			post.mediaType = "gifv";
 			resolve(post);
 		}
 		else if (/gfycat\.com\/[A-Za-z]+$/.test(post.url) ||
@@ -330,16 +290,11 @@ postInfoDisplaySubredditP.id = "postInfoDisplaySubredditP";
 postInfoDisplaySubredditLink.id = "postInfoDisplaySubredditLink";
 postInfoDisplayTitleLink.target = "_blank";
 postInfoDisplaySubredditLink.target = "_blank";
-var placePostInfoDisplayBlock = function() {
-	postInfoDisplayBlock.style.left = "20px";
-	postInfoDisplayBlock.style.top = String(window.innerHeight - postInfoDisplayBlock.offsetHeight) + "px";
-}
 var updatePostInfoDisplay = function(post) {
 	postInfoDisplayTitleLink.textContent = post.title;
 	postInfoDisplayTitleLink.href = post.link;
 	postInfoDisplaySubredditLink.textContent = "/r/" + post.subreddit;
 	postInfoDisplaySubredditLink.href = "https://www.reddit.com/r/" + post.subreddit;
-	placePostInfoDisplayBlock();
 };
 
 // Display the media element of the current post.
@@ -375,11 +330,22 @@ var promiseLoadMediaElement = function(post) {
 				resolve(settings.normalSlideDuration);
 			});
 		}
-		else if (post.mediaType === "video") {
+		else if (post.mediaType === "video" || post.mediaType === "gifv") {
 			var newMediaElement = document.createElement("video");
 			newMediaElement.zIndex = 0;
 			newMediaElement.onerror = error => reject(error);
-			newMediaElement.src = post.mediaURL;
+			if (post.mediaType === "video") {
+				newMediaElement.src = post.mediaURL;
+			}
+			else {
+				var mediaURLWithoutExtension = post.mediaURL.slice(0, -5);
+				var webmSource = document.createElement("source");
+				var mp4Source = document.createElement("source");
+				webmSource.src = mediaURLWithoutExtension + ".webm";
+				mp4Source.src = mediaURLWithoutExtension + ".mp4";
+				newMediaElement.appendChild(webmSource);
+				newMediaElement.appendChild(mp4Source);
+			}
 			newMediaElement.loop = true;
 			newMediaElement.controls = true;
 			newMediaElement.addEventListener("canplay", function callback() {
@@ -406,21 +372,20 @@ var promiseLoadMediaElement = function(post) {
 		}
 	});
 };
+window.addEventListener("resize", function() {
+	if (mediaElement.parentNode) {
+		placeAndFitMediaElement(mediaElement);
+	}
+});
 
 // Update the progress indicator.
 var colorPrimaryMajor = getComputedStyle(document.body).getPropertyValue("--primary-major");
 var colorSecondaryMinor = getComputedStyle(document.body).getPropertyValue("--secondary-minor");
 var progressCanvas = document.createElement("canvas");
-progressCanvas.style.position = "absolute";
-progressCanvas.style.zIndex = 1;
+progressCanvas.id = "progressCanvas";
 progressCanvas.width = 100;
 progressCanvas.height = 100;
 document.body.appendChild(progressCanvas);
-var placeProgressCanvas = function() {
-	progressCanvas.style.left = String(window.innerWidth - progressCanvas.width) + "px";
-	progressCanvas.style.top = String(window.innerHeight - progressCanvas.height) + "px";
-};
-placeProgressCanvas();
 var ctx = progressCanvas.getContext("2d");
 var launchProgressAnimation = function(slideDuration) {
 	var slideStartEpoch = Date.now();
@@ -439,9 +404,9 @@ var launchProgressAnimation = function(slideDuration) {
 			ctx.arc(progressCanvas.width / 2, progressCanvas.height / 2, innerRadius, progressAngle, -Math.PI / 2, true);
 			ctx.fill();
 			ctx.closePath();
-			ctx.beginPath();
 			ctx.strokeStyle = colorPrimaryMajor;
-			ctx.lineWidth = 1;
+			ctx.lineWidth = 2;
+			ctx.beginPath();
 			ctx.arc(progressCanvas.width / 2, progressCanvas.height / 2, outerRadius, -Math.PI / 2, progressAngle, false);
 			ctx.stroke();
 			window.requestAnimationFrame(draw);
@@ -462,15 +427,6 @@ var drawPauseSymbol = function() {
 			progressCanvas.height * 3 / 5);
 	});
 };
-
-// Readjust the elements when the user resizes the window.
-window.addEventListener("resize", function() {
-	if (mediaElement.parentNode) {
-		placeAndFitMediaElement(mediaElement);
-	}
-	placePostInfoDisplayBlock();
-	placeProgressCanvas();
-});
 
 // Run the slideshow.
 // First initialize some variables that will play a role in the interface with the slideshow:
@@ -571,10 +527,23 @@ return fetchers[indexGenerator.next().value].getNextPostPromise().then(registerP
 // Pass the settings to the .then() chain that will launch the slideshow.
 var launchSettingsScreen = function() {
 	return new Promise(function(resolve, reject) {
-		var subredditList = document.querySelector("#subredditList");
-		var slideDuration = document.querySelector("#slideDuration");
 		var submitted = false;
+		[document.querySelector("#sortingMethodTop"),
+			document.querySelector("#sortingMethodControversial")].forEach(element => element.addEventListener("change", function() {
+				if (element.checked) {
+					document.querySelector("#periodDiv").style.display = "flex";
+				}
+			}));
+		[document.querySelector("#sortingMethodHot"),
+			document.querySelector("#sortingMethodNew"),
+			document.querySelector("#sortingMethodRising")].forEach(element => element.addEventListener("change", function() {
+				if (element.checked) {
+					document.querySelector("#periodDiv").style.display = "none";
+				}
+			}));
 		var submit = function() {
+			var subredditList = document.querySelector("#subredditList");
+			var slideDuration = document.querySelector("#slideDuration");
 			if (!/^\w+( \w+)*$/.test(subredditList.value.trim())) {
 				return;
 			}
@@ -610,55 +579,215 @@ launchSettingsScreen().then(launchSlideshow).catch(error => console.log(error));
 
 };
 </script>
+<style>
+:root {
+	--primary-major: #ff69b4;
+	--primary-minor: #ffddf4;  /* or ffb3de */
+	--secondary-major: #989898;
+	--secondary-minor: #dcdcdc;
+	--background-color: #ffffff;
+}
+body {
+	background-color: var(--background-color);
+}
+#postInfoDisplayBlock {
+	z-index: 2;
+	position: absolute;
+	max-width: 75%;
+	bottom: 0;
+	left: 20px;
+}
+#postInfoDisplayTitleP {
+	font: x-large helvetica, sans-serif;
+	margin-block-end: 0;
+}
+#postInfoDisplayTitleLink {
+	text-decoration: none;
+	color: var(--primary-major);
+}
+#postInfoDisplayTitleLink:hover {
+	color: var(--primary-minor);
+}
+#postInfoDisplaySubredditP {
+	font: medium verdana, sans-serif;
+	margin-block-start: 0;
+}
+#postInfoDisplaySubredditLink {
+	text-decoration: none;
+	color: var(--secondary-major);
+}
+#postInfoDisplaySubredditLink:hover {
+	color: var(--secondary-minor);
+}
+#progressCanvas {
+	position: absolute;
+	z-index: 1;
+	right: 0;
+	bottom: 0;
+}
+#settingsDiv {
+	margin-top: 10%;
+	margin-left: 25%;
+	margin-right: 25%;
+}
+#firstRowDiv p {
+	text-align: center;
+	font: 1.5em helvetica, sans-serif;
+	color: var(--primary-major);
+	margin-bottom: 0;
+}
+#firstRowDiv input {
+	width: 100%;
+	border: 0;
+	border-bottom: thin solid var(--primary-major);
+	font: 3em monospace;
+	color: var(--secondary-major);
+	caret-color: var(--primary-major);
+}
+#firstRowDiv input:focus {
+	outline: none;
+}
+#firstRowDiv input::placeholder {
+	color: var(--secondary-minor);
+}
+#secondRowDiv {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: 1fr;
+	align-items: normal;
+	justify-items: center;
+}
+#methodDiv {
+	display: flex;
+	flex-direction: column;
+}
+#periodDiv {
+	display: none;
+	flex-direction: column;
+}
+#methodDiv p, #periodDiv p {
+	font: 1.2em verdana, sans-serif;
+	color: var(--primary-major);
+}
+#methodDiv label, #periodDiv label {
+	font: 1em verdana, sans-serif;
+	color: var(--secondary-major);
+}
+#methodDiv label:hover, #periodDiv label:hover {
+	cursor: pointer;
+}
+#methodDiv input, #periodDiv input {
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	appearance: none;
+	background-color: var(--secondary-minor);
+	width: 1em;
+	height: 1em;
+	border-radius: 1em;
+	margin-right: .5em;
+	cursor: pointer;     
+	outline: none;
+}
+#methodDiv input:checked, #periodDiv input:checked {
+	background-color: var(--primary-major);
+}
+#methodDiv input:hover, #periodDiv input:hover {
+	background-color: var(--primary-minor);
+}
+#durationShuffleDiv {
+	display: flex;
+	flex-direction: column;
+	font: 1em verdana, sans-serif;
+	color: var(--secondary-major);
+}
+#durationShuffleDiv #slideDuration {
+	width: 2em;
+	border: 0;
+	border-bottom: thin solid var(--secondary-major);
+	font: 1.5em monospace;
+	color: var(--primary-major);
+	caret-color: var(--primary-major);
+}
+#durationShuffleDiv #slideDuration:focus {
+	outline: none;
+}
+#durationShuffleDiv label:hover {
+	cursor: pointer;
+}
+#durationShuffleDiv label {
+	position: relative;
+}
+#durationShuffleDiv #shuffleSubreddits {
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	appearance: none;
+	background-color: var(--secondary-minor);
+	width: 1em;
+	height: 1em;
+	border-radius: 1em;
+	margin-right: 0;
+	margin-bottom: 0;
+	cursor: pointer;     
+	outline: none;
+}
+#durationShuffleDiv #shuffleSubreddits:checked {
+	background-color: var(--primary-major);
+}
+#durationShuffleDiv #shuffleSubreddits:hover {
+	background-color: var(--primary-minor);
+}
+#thirdRowDiv p {
+	text-align: center;
+	font: 1em helvetica, sans-serif;
+	color: var(--secondary-minor);
+}
+</style>
 </head>
 <body>
 <div id="settingsDiv">
-	<div>
-		<p>Enter the names of the subreddits of your choice, separated by a Space character:</p>
-		<input id="subredditList" autofocus placeholder="aww Overwatch me_irl">
+	<div id="firstRowDiv">
+		<p>
+			Enter the names of the subreddits of your choice, separate them by one space &#9251; :</p>
+			<input id="subredditList" autofocus placeholder="aww Overwatch me_irl" spellcheck="false">
 	</div>
-	<div>
-		<p>Sort by:</p>
-		<input type="radio" id="sortingMethodHot" name="sortingMethod" value="hot" checked>
-		<label for="sortingMethodHot">Hot</label>
-		<input type="radio" id="sortingMethodTop" name="sortingMethod" value="top">
-		<label for="sortingMethodTop">Top</label>
-		<input type="radio" id="sortingMethodNew" name="sortingMethod" value="new">
-		<label for="sortingMethodNew">New</label>
-		<input type="radio" id="sortingMethodRising" name="sortingMethod" value="rising">
-		<label for="sortingMethodRising">Rising</label>
-		<input type="radio" id="sortingMethodControversial" name="sortingMethod" value="controversial">
-		<label for="sortingMethodControversial">Controversial</label>
+	<div id="secondRowDiv">
+		<div id="methodDiv">
+			<p>Sort by:</p>
+			<label><input type="radio" id="sortingMethodHot" name="sortingMethod" value="hot" checked>Hot</label>
+			<label><input type="radio" id="sortingMethodTop" name="sortingMethod" value="top">Top</label>
+			<label><input type="radio" id="sortingMethodNew" name="sortingMethod" value="new">New</label>
+			<label><input type="radio" id="sortingMethodRising" name="sortingMethod" value="rising">Rising</label>
+			<label><input type="radio" id="sortingMethodControversial" name="sortingMethod" value="controversial">Controversial</label>
+		</div>
+		<div id="periodDiv">
+			<p>Period:</p>
+			<label><input type="radio" id="sortingPeriodHour" name="sortingPeriod" value="hour">Past hour</label>
+			<label><input type="radio" id="sortingPeriodDay" name="sortingPeriod" value="day">Past 24 hours</label>
+			<label><input type="radio" id="sortingPeriodWeek" name="sortingPeriod" value="week" checked>Past week</label>
+			<label><input type="radio" id="sortingPeriodMonth" name="sortingPeriod" value="month">Past month</label>
+			<label><input type="radio" id="sortingPeriodYear" name="sortingPeriod" value="year">Past year</label>
+			<label><input type="radio" id="sortingPeriodAll" name="sortingPeriod" value="all">All time</label>
+		</div>
+		<div id="durationShuffleDiv">
+			<p>
+				Slide Duration: <input type="number" id="slideDuration" min="1" step="1" value="10"> seconds
+			</p>
+			<p>
+				<label>
+					<input type="checkbox" id="shuffleSubreddits" name="shuffleSubreddits" checked>
+					Shuffle subreddits for every new round of slides
+				</label>
+			</p>
+		</div>
 	</div>
-	<div>
-		<p>Period:</p>
-		<input type="radio" id="sortingPeriodHour" name="sortingPeriod" value="hour">
-		<label for="sortingPeriodHour">Past hour</label>
-		<input type="radio" id="sortingPeriodDay" name="sortingPeriod" value="day">
-		<label for="sortingPeriodDay">Past 24 hours</label>
-		<input type="radio" id="sortingPeriodWeek" name="sortingPeriod" value="week" checked>
-		<label for="sortingPeriodWeek">Past week</label>
-		<input type="radio" id="sortingPeriodMonth" name="sortingPeriod" value="month">
-		<label for="sortingPeriodMonth">Past month</label>
-		<input type="radio" id="sortingPeriodYear" name="sortingPeriod" value="year">
-		<label for="sortingPeriodYear">Past year</label>
-		<input type="radio" id="sortingPeriodAll" name="sortingPeriod" value="all">
-		<label for="sortingPeriodAll">All time</label>
+	<div id="thirdRowDiv">
+		<p>
+			Press Enter to proceed.
+			<br>Press P to pause the slideshow.
+			<br>Press Space or LeftArrow to jump to the next slide.
+			<br>Press Backspace or RightArrow to go back to the previous slide.
+		</p>
 	</div>
-	<div>
-		<p>Desired duration of a slide:</p>
-		<input type="number" id="slideDuration" min="1" step="1" value="10">
-	</div>
-	<div>
-		<input type="checkbox" id="shuffleSubreddits" name="shuffleSubreddits" checked>
-		<label for="shuffleSubreddits">Shuffle subreddits for every new round of slides.</label>
-	</div>
-	<p>
-		Press Enter to proceed.
-		<br>Press P to pause the slideshow.
-		<br>Press Space or LeftArrow to jump to the next slide.
-		<br>Press Backspace or RightArrow to go back to the previous slide.
-	</p>
 </div>
 </body>
 </html>
