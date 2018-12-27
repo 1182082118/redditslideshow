@@ -567,7 +567,6 @@ var launchSettingsScreen = function() {
 				normalSlideDuration: Math.round(slideDuration.value * 1000),
 				shuffleSubreddits: document.querySelector("#shuffleSubreddits").checked,
 			};
-			console.log(settings);
 			submitted = true;
 			document.body.removeChild(document.querySelector("#settingsDiv"));
 			resolve(settings);
