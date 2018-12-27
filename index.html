@@ -3,10 +3,49 @@
 <head>
 <title>Nice!</title>
 <style>
+:root {
+	--primary-major: #ff69b4;
+	--primary-minor: #ffddf4;  /* or ffb3de */
+	--secondary-major: #c0c0c0;
+	--secondary-minor: #dcdcdc;
+	--background-color: #ffffff;
+}
+body {
+	background-color: var(--background-color);
+	overflow: hidden;
+}
+#postInfoDisplayBlock {
+	z-index: 2;
+	position: absolute;
+	max-width: 75%;
+}
+#postInfoDisplayTitleP {
+	font-size: x-large;
+	margin-block-end: 0;
+	font-family: helvetica, sans-serif;
+}
+#postInfoDisplayTitleLink {
+	text-decoration: none;
+	color: var(--primary-major);
+}
+#postInfoDisplayTitleLink:hover {
+	color: var(--primary-minor);
+}
+#postInfoDisplaySubredditP {
+	font-size: medium;
+	margin-block-start: 0;
+	font-family: verdana, sans-serif;
+}
+#postInfoDisplaySubredditLink {
+	text-decoration: none;
+	color: var(--secondary-major);
+}
+#postInfoDisplaySubredditLink:hover {
+	color: var(--secondary-minor);
+}
 </style>
 <script>
 window.onload = function() {
-document.documentElement.style.overflow = "hidden";
 document.body.scroll = "no";
 document.body.style.margin = 0;
 
@@ -278,16 +317,34 @@ var createSlideErrorPromise = function() {
 	});
 };
 
-// The createSlide function modifies the document to display the data of a given reddit post.
-//window.addEventListener("resize", ()=>null)
-//window.innerWidth, window.innerHeight
-//document.body.appendChild(referenceToNode)
-//document.body.removeChild(referenceToNode)
-//referenceToNode.parentNode.removeChild(referenceToNode)
-//element.style.color, element.style.maxWidth, ...
-//img.width (get and set), img.height (get and set), img.naturalWidth (get), img.naturalHeight (get)
+// Display the title and the subreddit of the current post.
+var postInfoDisplayBlock = document.body.appendChild(document.createElement("div"));
+var postInfoDisplayTitleP = postInfoDisplayBlock.appendChild(document.createElement("p"));
+var postInfoDisplayTitleLink = postInfoDisplayTitleP.appendChild(document.createElement("a"));
+var postInfoDisplaySubredditP = postInfoDisplayBlock.appendChild(document.createElement("p"));
+var postInfoDisplaySubredditLink = postInfoDisplaySubredditP.appendChild(document.createElement("a"));
+postInfoDisplayBlock.id = "postInfoDisplayBlock";
+postInfoDisplayTitleP.id = "postInfoDisplayTitleP";
+postInfoDisplayTitleLink.id = "postInfoDisplayTitleLink";
+postInfoDisplaySubredditP.id = "postInfoDisplaySubredditP";
+postInfoDisplaySubredditLink.id = "postInfoDisplaySubredditLink";
+postInfoDisplayTitleLink.target = "_blank";
+postInfoDisplaySubredditLink.target = "_blank";
+var placePostInfoDisplayBlock = function() {
+	postInfoDisplayBlock.style.left = "20px";
+	postInfoDisplayBlock.style.top = String(window.innerHeight - postInfoDisplayBlock.offsetHeight) + "px";
+}
+var updatePostInfoDisplay = function(post) {
+	postInfoDisplayTitleLink.textContent = post.title;
+	postInfoDisplayTitleLink.href = post.link;
+	postInfoDisplaySubredditLink.textContent = "/r/" + post.subreddit;
+	postInfoDisplaySubredditLink.href = "https://www.reddit.com/r/" + post.subreddit;
+	placePostInfoDisplayBlock();
+};
+
+// Display the media element of the current post.
 var mediaElement = document.createElement("div");
-var placeAndFitElement = function(element) {
+var placeAndFitMediaElement = function(element) {
 	if (element.tagName !== "IMG" && element.tagName !== "VIDEO") return;
 	var sourceWidth = (element.tagName === "IMG") ? element.naturalWidth : element.videoWidth;
 	var sourceHeight = (element.tagName === "IMG") ? element.naturalHeight : element.videoHeight;
@@ -302,20 +359,15 @@ var placeAndFitElement = function(element) {
 	element.style.left = String((window.innerWidth - ((element.width === 0) ? sourceWidth : element.width)) / 2) + "px";
 	element.style.top = String((window.innerHeight - ((element.height === 0) ? sourceHeight : element.height)) / 2) + "px";
 };
-window.addEventListener("resize", function() {
-	if (mediaElement.parentNode) {
-		placeAndFitElement(mediaElement);
-	}
-});
-var promiseCreateSlide = function(post) {
+var promiseLoadMediaElement = function(post) {
 	return new Promise(function(resolve, reject) {
-		console.log(post);
 		if (post.mediaType === "image") {
 			var newMediaElement = document.createElement("img");
+			newMediaElement.zIndex = 0;
 			newMediaElement.onerror = error => reject(error);
 			newMediaElement.src = post.mediaURL;
 			newMediaElement.addEventListener("load", function() {
-				placeAndFitElement(newMediaElement);
+				placeAndFitMediaElement(newMediaElement);
 				if (mediaElement.parentNode) {
 					mediaElement.parentNode.removeChild(mediaElement);
 				}
@@ -325,13 +377,14 @@ var promiseCreateSlide = function(post) {
 		}
 		else if (post.mediaType === "video") {
 			var newMediaElement = document.createElement("video");
+			newMediaElement.zIndex = 0;
 			newMediaElement.onerror = error => reject(error);
 			newMediaElement.src = post.mediaURL;
 			newMediaElement.loop = true;
 			newMediaElement.controls = true;
 			newMediaElement.addEventListener("canplay", function callback() {
 				newMediaElement.removeEventListener("canplay", callback);
-				placeAndFitElement(newMediaElement);
+				placeAndFitMediaElement(newMediaElement);
 				var slideDuration = 0;
 				if (isNaN(newMediaElement.duration) || newMediaElement.duration <= 0) {
 					slideDuration = settings.normalSlideDuration;
@@ -354,18 +407,75 @@ var promiseCreateSlide = function(post) {
 	});
 };
 
-// the displaySlideDurationProgress function updates a visual indicator.
-var displaySlideDurationProgress = function(elapsedTime, slideDuration) {
+// Update the progress indicator.
+var colorPrimaryMajor = getComputedStyle(document.body).getPropertyValue("--primary-major");
+var colorSecondaryMinor = getComputedStyle(document.body).getPropertyValue("--secondary-minor");
+var progressCanvas = document.createElement("canvas");
+progressCanvas.style.position = "absolute";
+progressCanvas.style.zIndex = 1;
+progressCanvas.width = 100;
+progressCanvas.height = 100;
+document.body.appendChild(progressCanvas);
+var placeProgressCanvas = function() {
+	progressCanvas.style.left = String(window.innerWidth - progressCanvas.width) + "px";
+	progressCanvas.style.top = String(window.innerHeight - progressCanvas.height) + "px";
 };
+placeProgressCanvas();
+var ctx = progressCanvas.getContext("2d");
+var launchProgressAnimation = function(slideDuration) {
+	var slideStartEpoch = Date.now();
+	window.requestAnimationFrame(function draw() {
+		ctx.clearRect(0, 0, progressCanvas.width, progressCanvas.height);
+		if (!slideshowIsPaused) {
+			var elapsedTime = Date.now() - slideStartEpoch;
+			var progressAngle = (elapsedTime / slideDuration * 4 - 1) * Math.PI / 2;
+			var outerRadius = progressCanvas.width * 2 / 5;
+			var innerRadius = progressCanvas.width / 4;
+			ctx.fillStyle = colorSecondaryMinor;
+			ctx.beginPath();
+			ctx.arc(progressCanvas.width / 2, progressCanvas.height / 2, outerRadius, -Math.PI / 2, progressAngle, false);
+			ctx.lineTo(progressCanvas.width / 2 + Math.cos(progressAngle) * innerRadius,
+				progressCanvas.height / 2 + Math.sin(progressAngle) * innerRadius);
+			ctx.arc(progressCanvas.width / 2, progressCanvas.height / 2, innerRadius, progressAngle, -Math.PI / 2, true);
+			ctx.fill();
+			ctx.closePath();
+			ctx.beginPath();
+			ctx.strokeStyle = colorPrimaryMajor;
+			ctx.lineWidth = 1;
+			ctx.arc(progressCanvas.width / 2, progressCanvas.height / 2, outerRadius, -Math.PI / 2, progressAngle, false);
+			ctx.stroke();
+			window.requestAnimationFrame(draw);
+		}
+	});
+};
+var drawPauseSymbol = function() {
+	window.requestAnimationFrame(function() {
+		ctx.clearRect(0, 0, progressCanvas.width, progressCanvas.height);
+		ctx.fillStyle = colorSecondaryMinor;
+		ctx.fillRect(progressCanvas.width / 5,
+			progressCanvas.height / 5,
+			progressCanvas.width / 5,
+			progressCanvas.height * 3 / 5);
+		ctx.fillRect(progressCanvas.width * 3 / 5,
+			progressCanvas.height / 5,
+			progressCanvas.width / 5,
+			progressCanvas.height * 3 / 5);
+	});
+};
+
+// Readjust the elements when the user resizes the window.
+window.addEventListener("resize", function() {
+	if (mediaElement.parentNode) {
+		placeAndFitMediaElement(mediaElement);
+	}
+	placePostInfoDisplayBlock();
+	placeProgressCanvas();
+});
 
 // Run the slideshow.
 // First initialize some variables that will play a role in the interface with the slideshow:
 //   - The shownPostsMemory, timeTravellerIndex and registerPostInMemory variables will be used
 //     when the user uses the "previous slide" ability.
-//   - The slideStartEpoch, slideTimeElapsed and timeElapsingInterval will be used
-//     to set up an interval that yields the time elapsed since a current slide has shown up.
-//     This will be used to update a visual indicator of the time left until a new slide shows up.
-//     Note that a paused slideshow will not use this ability.
 //   - The various input/event promises will be used when processing input/event.
 //   - The preloading variables will be used to preload.
 // Then start the slideshow by requesting a post from a given PostFetcher,
@@ -377,9 +487,6 @@ var registerPostInMemory = function(post) {
 	shownPostsMemory.push(post);
 	return post;
 };
-var slideStartEpoch = 0;
-var slideTimeElapsed = 0;
-var timeElapsingInterval = null;
 var slideTimeoutEventTimeout = null;
 var nextSlideInputPromise = createNextSlideInputPromise();
 var previousSlideInputPromise = createPreviousSlideInputPromise();
@@ -395,17 +502,10 @@ return fetchers[indexGenerator.next().value].getNextPostPromise().then(registerP
 		preloadedNextPostPromise = fetchers[indexGenerator.next().value].getNextPostPromise();
 		preloadNextPostPromise = false;
 	}
-	// Clear the variables of the elapsed time tracking ability, show the fetched post,
-	//   and launch the elapsed time tracking if the slideshow is not paused.
-	clearInterval(timeElapsingInterval);
-	promiseCreateSlide(post).then(function(slideDuration) {
+	updatePostInfoDisplay(post);
+	promiseLoadMediaElement(post).then(function(slideDuration) {
 		if (!slideshowIsPaused) {
-			slideStartEpoch = Date.now();
-			slideTimeElapsed = 0;
-			timeElapsingInterval = setInterval(function() {
-				slideTimeElapsed = Date.now() - slideStartEpoch;
-				displaySlideDurationProgress(slideTimeElapsed, slideDuration);
-			}, 50);
+			launchProgressAnimation(slideDuration);
 			slideTimeoutEventTimeout = window.setTimeout(function() { window.dispatchEvent(slideTimeoutEvent); }, slideDuration);
 		}
 	})
@@ -422,8 +522,14 @@ return fetchers[indexGenerator.next().value].getNextPostPromise().then(registerP
 	//   the Promise.race() passes the nature of the first event to occur to its .then() chain when it resolves.
 	// When an event is processed, its corresponding promise is reset so that it can trigger again when the next slide shows up.
 	// If an event is not processed, it will not reset and will therefore be processed in the next cycle.
-	var inputPromises = [slideErrorPromise, nextSlideInputPromise, previousSlideInputPromise, pauseInputPromise, slideTimeoutPromise];
-	return Promise.race(inputPromises).then(function processInput(event) {
+	return Promise.race([
+		slideErrorPromise,
+		nextSlideInputPromise,
+		previousSlideInputPromise,
+		pauseInputPromise,
+		slideTimeoutPromise,
+	])
+	.then(function processInput(event) {
 		window.clearTimeout(slideTimeoutEventTimeout);
 		slideErrorPromise = createSlideErrorPromise();
 		slideTimeoutPromise = createSlideTimeoutPromise();
@@ -446,7 +552,7 @@ return fetchers[indexGenerator.next().value].getNextPostPromise().then(registerP
 		else if (event === "pauseInput") {
 			pauseInputPromise = createPauseInputPromise();
 			slideshowIsPaused = true;
-			clearInterval(timeElapsingInterval);
+			drawPauseSymbol();
 			return Promise.race([nextSlideInputPromise, previousSlideInputPromise, pauseInputPromise]).then(processInput);
 		}
 		else if (event === "resumeInput") {
@@ -454,7 +560,8 @@ return fetchers[indexGenerator.next().value].getNextPostPromise().then(registerP
 			slideshowIsPaused = false;
 			return post;
 		}
-	}).then(showSlide);
+	})
+	.then(showSlide);
 });
 
 };
@@ -464,11 +571,36 @@ return fetchers[indexGenerator.next().value].getNextPostPromise().then(registerP
 // Pass the settings to the .then() chain that will launch the slideshow.
 var launchSettingsScreen = function() {
 	return new Promise(function(resolve, reject) {
-		resolve({
-			normalSlideDuration: 3000,
-			sorting: new Sorting("hot", ""),
-			shuffleSubreddits: true,
-			subredditList: ["overwatch"],
+		var subredditList = document.querySelector("#subredditList");
+		var slideDuration = document.querySelector("#slideDuration");
+		var submitted = false;
+		var submit = function() {
+			if (!/^\w+( \w+)*$/.test(subredditList.value.trim())) {
+				return;
+			}
+			if (slideDuration.value === "" || isNaN(slideDuration.value)) {
+				return;
+			}
+			var sortingMethod = Array.from(document.querySelectorAll("input[name=\"sortingMethod\"]")).find(elem => elem.checked).value;
+			var sortingPeriod = "";
+			if (sortingMethod === "top" || sortingMethod === "controversial") {
+				sortingPeriod = Array.from(document.querySelectorAll("input[name=\"sortingPeriod\"]")).find(elem => elem.checked).value;
+			}
+			var settings = {
+				subredditList: subredditList.value.trim().split(" "),
+				sorting: new Sorting(sortingMethod, sortingPeriod),
+				normalSlideDuration: Math.round(slideDuration.value * 1000),
+				shuffleSubreddits: document.querySelector("#shuffleSubreddits").checked,
+			};
+			console.log(settings);
+			submitted = true;
+			document.body.removeChild(document.querySelector("#settingsDiv"));
+			resolve(settings);
+		};
+		window.addEventListener("keyup", function(event) {
+			if (!submitted && event.key === "Enter") {
+				submit();
+			}
 		});
 	});
 };
@@ -480,5 +612,53 @@ launchSettingsScreen().then(launchSlideshow).catch(error => console.log(error));
 </script>
 </head>
 <body>
+<div id="settingsDiv">
+	<div>
+		<p>Enter the names of the subreddits of your choice, separated by a Space character:</p>
+		<input id="subredditList" autofocus placeholder="aww Overwatch me_irl">
+	</div>
+	<div>
+		<p>Sort by:</p>
+		<input type="radio" id="sortingMethodHot" name="sortingMethod" value="hot" checked>
+		<label for="sortingMethodHot">Hot</label>
+		<input type="radio" id="sortingMethodTop" name="sortingMethod" value="top">
+		<label for="sortingMethodTop">Top</label>
+		<input type="radio" id="sortingMethodNew" name="sortingMethod" value="new">
+		<label for="sortingMethodNew">New</label>
+		<input type="radio" id="sortingMethodRising" name="sortingMethod" value="rising">
+		<label for="sortingMethodRising">Rising</label>
+		<input type="radio" id="sortingMethodControversial" name="sortingMethod" value="controversial">
+		<label for="sortingMethodControversial">Controversial</label>
+	</div>
+	<div>
+		<p>Period:</p>
+		<input type="radio" id="sortingPeriodHour" name="sortingPeriod" value="hour">
+		<label for="sortingPeriodHour">Past hour</label>
+		<input type="radio" id="sortingPeriodDay" name="sortingPeriod" value="day">
+		<label for="sortingPeriodDay">Past 24 hours</label>
+		<input type="radio" id="sortingPeriodWeek" name="sortingPeriod" value="week" checked>
+		<label for="sortingPeriodWeek">Past week</label>
+		<input type="radio" id="sortingPeriodMonth" name="sortingPeriod" value="month">
+		<label for="sortingPeriodMonth">Past month</label>
+		<input type="radio" id="sortingPeriodYear" name="sortingPeriod" value="year">
+		<label for="sortingPeriodYear">Past year</label>
+		<input type="radio" id="sortingPeriodAll" name="sortingPeriod" value="all">
+		<label for="sortingPeriodAll">All time</label>
+	</div>
+	<div>
+		<p>Desired duration of a slide:</p>
+		<input type="number" id="slideDuration" min="1" step="1" value="10">
+	</div>
+	<div>
+		<input type="checkbox" id="shuffleSubreddits" name="shuffleSubreddits" checked>
+		<label for="shuffleSubreddits">Shuffle subreddits for every new round of slides.</label>
+	</div>
+	<p>
+		Press Enter to proceed.
+		<br>Press P to pause the slideshow.
+		<br>Press Space or LeftArrow to jump to the next slide.
+		<br>Press Backspace or RightArrow to go back to the previous slide.
+	</p>
+</div>
 </body>
 </html>
